@@ -1,0 +1,103 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+#include <time.h>
+
+#define BUFFER_SIZE 5
+#define NUM_ITEMS 20
+
+// Circular buffer
+int buffer[BUFFER_SIZE];
+int in = 0;  // Producer index
+int out = 0; // Consumer index
+
+// Semaphores
+sem_t mutex;   // Binary semaphore for mutual exclusion
+sem_t empty;   // Counts empty slots
+sem_t full;    // Counts filled slots
+
+// Producer thread function
+void* producer(void* arg) {
+    int id = *(int*)arg;
+    
+    for (int i = 0; i < NUM_ITEMS; i++) {
+        int item = rand() % 100;  // Generate random item
+        
+        sem_wait(&empty);  // Wait if buffer is full
+        sem_wait(&mutex);  // Enter critical section
+        
+        // Produce item
+        buffer[in] = item;
+        printf("Producer %d: produced item %d at index %d\n", id, item, in);
+        in = (in + 1) % BUFFER_SIZE;
+        
+        sem_post(&mutex);  // Exit critical section
+        sem_post(&full);   // Signal that an item is available
+        
+        sleep(rand() % 2);  // Simulate variable production speed
+    }
+    
+    printf("Producer %d finished\n", id);
+    return NULL;
+}
+
+// Consumer thread function
+void* consumer(void* arg) {
+    int id = *(int*)arg;
+    int consumed_count = 0;
+    
+    while (consumed_count < NUM_ITEMS) {
+        sem_wait(&full);   // Wait if buffer is empty
+        sem_wait(&mutex);  // Enter critical section
+        
+        // Consume item
+        int item = buffer[out];
+        printf("Consumer %d: consumed item %d from index %d\n", id, item, out);
+        out = (out + 1) % BUFFER_SIZE;
+        consumed_count++;
+        
+        sem_post(&mutex);  // Exit critical section
+        sem_post(&empty);  // Signal that a slot is empty
+        
+        sleep(rand() % 3);  // Simulate variable consumption speed
+    }
+    
+    printf("Consumer %d finished\n", id);
+    return NULL;
+}
+
+int main() {
+    pthread_t producer1, producer2, consumer1, consumer2;
+    int p1_id = 1, p2_id = 2, c1_id = 1, c2_id = 2;
+    
+    // Seed random number generator
+    srand(time(NULL));
+    
+    // Initialize semaphores
+    sem_init(&mutex, 0, 1);      // Mutex initialized to 1
+    sem_init(&empty, 0, BUFFER_SIZE); // Empty slots = buffer size
+    sem_init(&full, 0, 0);      // Full slots = 0 initially
+    
+    // Create producer and consumer threads
+    pthread_create(&producer1, NULL, producer, &p1_id);
+    pthread_create(&producer2, NULL, producer, &p2_id);
+    pthread_create(&consumer1, NULL, consumer, &c1_id);
+    pthread_create(&consumer2, NULL, consumer, &c2_id);
+    
+    // Wait for threads to finish
+    pthread_join(producer1, NULL);
+    pthread_join(producer2, NULL);
+    pthread_join(consumer1, NULL);
+    pthread_join(consumer2, NULL);
+    
+    // Clean up semaphores
+    sem_destroy(&mutex);
+    sem_destroy(&empty);
+    sem_destroy(&full);
+    
+    printf("\nAll threads completed. Buffer is empty.\n");
+    
+    return 0;
+}
